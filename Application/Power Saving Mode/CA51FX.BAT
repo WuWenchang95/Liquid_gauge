@@ -1,0 +1,19 @@
+SET C51INC=D:\keil\C51\INC\Cast\;D:\keil\C51\INC\
+SET C51LIB=D:\keil\C51\LIB
+SET CPU_TYPE=R8051XC2
+SET CPU_VENDOR=CAST, Inc.
+SET UV2_TARGET=CA51FX
+SET CPU_XTAL=0x016E3600
+"D:\keil\C51\BIN\C51.EXE" @.\hex\main.__i
+"D:\keil\C51\BIN\C51.EXE" @.\hex\SYSTEM~1.__I
+"D:\keil\C51\BIN\C51.EXE" @.\hex\wdt.__i
+"D:\keil\C51\BIN\C51.EXE" @.\hex\key.__i
+"D:\keil\C51\BIN\C51.EXE" @.\hex\FLOWFU~1.__I
+"D:\keil\C51\BIN\C51.EXE" @.\hex\TM1640.__i
+"D:\keil\C51\BIN\C51.EXE" @.\hex\buzzer.__i
+"D:\keil\C51\BIN\C51.EXE" @.\hex\flash.__i
+"D:\keil\C51\BIN\C51.EXE" @.\hex\delay.__i
+"D:\keil\C51\BIN\C51.EXE" @.\hex\uart.__i
+"D:\keil\C51\BIN\A51.EXE" @.\hex\STARTUP._ia
+"D:\keil\C51\BIN\BL51.EXE" @.\hex\ca51fx.lnp
+"D:\keil\C51\BIN\OH51.EXE" ".\hex\ca51fx" 

@@ -1,0 +1,5 @@
+---- UART0_BAUTRATE Matches (1 in 1 files) ----
+ca51f_config.h (Application\Power Saving Mode) line 55 : 	#define UART0_BAUTRATE		115200
+---- UART0_BAUTRATE Search Errors Encountered (1) ----
+The following 1 files could not be processed:
+C:\Users\Admin\Desktop\FlowPro\Application\Power Saving Mode\HEX2BIN.EXE : File could not be opened.

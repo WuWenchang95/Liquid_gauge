@@ -1,0 +1,4 @@
+---- Data_Area_Sector_Erase Matches (3 in 3 files) ----
+Flash.c (library\sources):void Data_Area_Sector_Erase(unsigned char SectorNumber)
+Flash.h (library\includes):void Data_Area_Sector_Erase(unsigned char SectorNumber);
+Flowfunction.c (application\power saving mode):	Data_Area_Sector_Erase(0);				//²Á³ý0ºÅÉÈÇø

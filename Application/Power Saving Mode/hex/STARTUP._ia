@@ -1,0 +1,1 @@
+"..\..\Library\Lib\STARTUP.A51" NOMOD51 SET (COMPACT) DEBUG PRINT(.\lst\STARTUP.lst) OBJECT(.\hex\STARTUP.obj) EP
