@@ -1,0 +1,864 @@
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE FLOWFUNCTION
+OBJECT MODULE PLACED IN .\hex\Flowfunction.obj
+COMPILER INVOKED BY: D:\OfficeSoftware\KEIL_C51\C51\BIN\C51.EXE Flowfunction.c COMPACT ROM(COMPACT) OPTIMIZE(9,SIZE) BRO
+                    -WSE DEBUG OBJECTEXTEND PRINT(.\lst\Flowfunction.lst) TABS(2) OBJECT(.\hex\Flowfunction.obj)
+
+line level    source
+
+   1          #ifndef FLOW_FUNCTION_C
+   2          #define FLOW_FUNCTION_C
+   3          
+   4          #include "ca51f_config.h"
+   5          #if (IC_TYPE == IC_TYPE_CA51F2X)
+              #include "../../includes/ca51f2sfr.h"
+              #include "../../includes/ca51f2xsfr.h"
+              #include "../../includes/gpiodef_f2.h"
+              #elif (IC_TYPE == IC_TYPE_CA51F3X)
+  10          #include "../../includes/ca51f3sfr.h"
+  11          #include "../../includes/ca51f3xsfr.h"
+  12          #include "../../includes/gpiodef_f3.h"
+  13          #endif
+  14          #include "../../includes/system.h"
+  15          #include "../../Library/includes/flash.h"
+  16          #include "../../Library/includes/uart.h"
+  17          #include "main.h"
+  18          #include <intrins.h>
+  19          #include "flowfunction.h"
+  20          #include "key.h"
+  21          #include "buzzer.h"
+  22          #include "TM1640.h"
+  23          
+  24          //100ml  1872,
+  25          //Ë®±Ã555   5s,270ml.  10s,510ml.   15s,800ml.  20s, 1010ml    //Ë®±ÃµÄÊ±¼ä    0.0534ml/ms
+  26          //Ë®±Ã545   5s,195ml.  10s,380ml.   15s,540ml.  20s, 720ml    //Ë®±ÃµÄÊ±¼ä    0.0370ml/ms
+  27          
+  28          //100ml£¬218  200ml£¬240    300ml£¬613  400ml £¬481  500ml£¬602
+  29          //2  100ml£¬208/204/278/275/278/268     200ml£¬/539/545/538/534  290,766/790/771/774  300ml£¬804/804  304,
+             -804/821   400ml £¬1011  500ml£¬602
+  30          
+  31          //micro   100,652/670  200,1130/938  300,1581/1707/1936/1819/1937/1949/1908/1907/1774   600,3302
+  32          //Ë®±Ã555 2200mlÃ¿·ÖÖÓ£¬2200ml/60000ms = 0.036667ml/ms  ÒÔ1msÎª¼ÆÊýµ¥Î»
+  33          
+  34          
+  35          #define  MAX_RATION_VALUE       (uint32_t)9999
+  36          #define  MIN_RATION_VALUE   (uint32_t)0
+  37          #define  UNIT_FLOWPUMP        (double)0.0534  //0.0370   //0.037        //Ë®±Ãµ¥Î»Ê±¼äµÄÁ÷Á¿
+  38          #define  UNIT_FLOWMETER1        (double)3.285 //3.280  //3.66 //2.900  //6.5    //0.383  ///0.83           //×
+             -ª×Óµ¥Î»¼ÆÊýµÄÁ÷Á¿
+  39          #define  UNIT_FLOWMETER2        (double)3.250   //3.335  //3.66 //2.900  //6.5    //0.383  ///0.83           /
+             -/×ª×Óµ¥Î»¼ÆÊýµÄÁ÷Á¿
+  40          
+  41          #define  RATION_STOP_CNT        100  
+  42          
+  43          FlowInfo_t  FlowSt = {0};           
+  44          uint8_t idata DispalyDigitalBuf[5] = {0,0,0,0,0};
+  45          uint8_t rationStopTimeCnt = 0;
+  46          
+  47          double  unitFlow_t;
+  48          
+  49          
+  50          uint8_t tfru_zd;
+  51          uint8_t tfru_zdcnt;
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 2   
+
+  52          uint8_t tfru_zdfg = 0;
+  53          
+  54          
+  55          typedef struct 
+  56          {
+  57            uint8_t higtCnt;
+  58            uint8_t lowCnt;
+  59            uint8_t ttl;
+  60            uint8_t curTtl;
+  61            uint8_t perTtl;
+  62            uint8_t flipFg;
+  63          }sPulse;
+  64          
+  65          sPulse idata tPulse = {0};
+  66          
+  67          /**************************************************************
+  68          **º¯ÊýÃû³Æ£ºWriteRationValueToMemory()
+  69          **º¯ÊýÃèÊö£ºÏòÊý¾ÝÇøÐ´ÈëÖµ
+  70          **Èë¿Ú²ÎÊý£ºÎÞ
+  71          **³ö¿Ú²ÎÊý£ºÎÞ
+  72          ***************************************************************/
+  73          void WriteRationValueToMemory(void)
+  74          {
+  75   1        uint16_t DataAreaBuf[10] = {0};
+  76   1        
+  77   1        DataAreaBuf[0] = 0xAA55;
+  78   1        
+  79   1        DataAreaBuf[1] = FlowSt.rationValue[0];
+  80   1        DataAreaBuf[2] = FlowSt.rationValue[1];
+  81   1        DataAreaBuf[3] = FlowSt.rationValue[2];
+  82   1        DataAreaBuf[4] = FlowSt.rationValue[3];
+  83   1        DataAreaBuf[5] = FlowSt.rationValue[4];
+  84   1        DataAreaBuf[6] = FlowSt.rationValue[5];
+  85   1        DataAreaBuf[7] = FlowSt.rationValue[6];
+  86   1        DataAreaBuf[8] = FlowSt.rationValue[7];
+  87   1        DataAreaBuf[9] = (uint16_t)FlowSt.dRationNum;
+  88   1      
+  89   1        Data_Area_Sector_Erase(0);        //²Á³ý0ºÅÉÈÇø
+  90   1        Data_Area_Mass_Write(0,(unsigned char *)DataAreaBuf,20);  //Ð´ÈëÊý¾Ý  
+  91   1      }
+  92          
+  93          /**************************************************************
+  94          **º¯ÊýÃû³Æ£ºReadRationValueToMemory()
+  95          **º¯ÊýÃèÊö£ºÏòÊý¾ÝÇø¶Á³ö±£´æµÄÊý¾Ý
+  96          **Èë¿Ú²ÎÊý£ºÎÞ
+  97          **³ö¿Ú²ÎÊý£ºÎÞ
+  98          ***************************************************************/
+  99          void ReadRationValueToMemory(void)
+ 100          {
+ 101   1        uint16_t  DataAreaBuf[10];
+ 102   1      
+ 103   1        Data_Area_Mass_Read(0,(unsigned char *)DataAreaBuf,20); //¶Á³ö±£´æµÄÊý¾Ý
+ 104   1        FlowSt.rationValue[0] = DataAreaBuf[1];     //×°ÔØÊý¾Ý
+ 105   1        FlowSt.rationValue[1] = DataAreaBuf[2];
+ 106   1        FlowSt.rationValue[2] = DataAreaBuf[3];
+ 107   1        FlowSt.rationValue[3] = DataAreaBuf[4];
+ 108   1        FlowSt.rationValue[4] = DataAreaBuf[5];
+ 109   1        FlowSt.rationValue[5] = DataAreaBuf[6];
+ 110   1        FlowSt.rationValue[6] = DataAreaBuf[7];
+ 111   1        FlowSt.rationValue[7] = DataAreaBuf[8];
+ 112   1        
+ 113   1        FlowSt.dRationNum = DataAreaBuf[9]&0xff;
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 3   
+
+ 114   1      
+ 115   1      }
+ 116          
+ 117          /**************************************************************
+ 118          **º¯ÊýÃû³Æ£ºPoweroffMemoryInit()
+ 119          **º¯ÊýÃèÊö£ºµôµç±£´æÊý¾Ý³õÊ¼»¯
+ 120          **Èë¿Ú²ÎÊý£ºÎÞ
+ 121          **³ö¿Ú²ÎÊý£ºÎÞ
+ 122          ***************************************************************/
+ 123          void PoweroffMemoryInit(void)
+ 124          {
+ 125   1        unsigned char  DataAreaBuf[2];
+ 126   1        PADRD = FLASH_SIZE*4 - 1;               //»®·ÖÊý¾ÝÇø£¬½«flashµÄ×îºóÒ»¿é£¨256×Ö½Ú£©ÎªÊý¾Ý¿Õ¼ä
+ 127   1        Data_Area_Mass_Read(0,DataAreaBuf,2);   //¶Á±êÖ¾Î»
+ 128   1        if((DataAreaBuf[0] != 0xAA)||(DataAreaBuf[1] != 0x55))//Èç¹û²»ÊÇx0AA55Îª³õ´ÎÉÏµç£¬ÐèÒª³õÊ¼»¯±äÁ¿´æÈëÊý¾Ý¿
+             -Õ¼ä
+ 129   1        {
+ 130   2      #if 1
+ 131   2          FlowSt.rationValue[0] = 5;    //×°ÔØÊý¾Ý
+ 132   2          FlowSt.rationValue[1] = 15;
+ 133   2          FlowSt.rationValue[2] = 20;
+ 134   2          FlowSt.rationValue[3] = 25;
+ 135   2          FlowSt.rationValue[4] = 100;
+ 136   2          FlowSt.rationValue[5] = 300;
+ 137   2          FlowSt.rationValue[6] = 500;
+ 138   2          FlowSt.rationValue[7] = 1000;
+ 139   2      #else
+                  FlowSt.rationValue[0] = 5;    //×°ÔØÊý¾Ý
+                  FlowSt.rationValue[1] = 10;
+                  FlowSt.rationValue[2] = 15;
+                  FlowSt.rationValue[3] = 20;
+                  FlowSt.rationValue[4] = 25;
+                  FlowSt.rationValue[5] = 30;
+                  FlowSt.rationValue[6] = 35;
+                  FlowSt.rationValue[7] = 40;
+              #endif
+ 149   2          FlowSt.dRationNum = 1;
+ 150   2      
+ 151   2          WriteRationValueToMemory();       //Ð´Èë×´Ì¬×ÖºÍ±äÁ¿µ½Êý¾Ý¿Õ¼ä
+ 152   2        }
+ 153   1        else
+ 154   1        {
+ 155   2          ReadRationValueToMemory();        //²»ÊÇ³õ´ÎÉÏµç£¬¶Á³öÔÚÊý¾Ý¿Õ¼äµÄÖµ
+ 156   2        }
+ 157   1      
+ 158   1        FlowSt.dRationValue = FlowSt.rationValue[FlowSt.dRationNum-1];
+ 159   1      }
+ 160          
+ 161          
+ 162          
+ 163          
+ 164          /**************************************************************
+ 165          **º¯ÊýÃû³Æ£ºTimer0Init(uint8_t      isStart)
+ 166          **º¯ÊýÃèÊö£º¶¨Ê±Æ÷0³õÊ¼»¯£¬100usÖÐ¶Ï   
+ 167          **Èë¿Ú²ÎÊý£ºisStart      ÊÇ·ñ¿ªÆô¶¨Ê±Æ÷ÖÐ¶Ï   1¿ªÆô   0¹Ø±Õ
+ 168          **³ö¿Ú²ÎÊý£ºÎÞ
+ 169          ***************************************************************/
+ 170          void Timer0Init(uint8_t      isStart)     //T0³õÊ¼»¯  3.6864 MHZ/12*4        1¸ö¼ÆÊý0.8138us
+ 171          {
+ 172   1        if(isStart)
+ 173   1        {
+ 174   2          //TMOD=0x11;
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 4   
+
+ 175   2          //TMOD = (TMOD&0xFF)|0x03;   //¶¨Ê±Æ÷0 Ä£Ê½3   8¼ÆÊýÆ÷  
+ 176   2          //TH0=0;                 //  100us        100/0.8138  = 122.88 
+ 177   2          //TL0=0x85;       //256-123;    
+ 178   2      
+ 179   2      
+ 180   2          TMOD = (TMOD&0xFF)|0x01;   //¶¨Ê±Æ÷0 Ä£Ê½1   16¼ÆÊýÆ÷  
+ 181   2          //TH0=0xF6;              // 2ms        2000/0.8138  = 2458
+ 182   2          //TL0=0x66;            //65536 - 2458 = 63078;  
+ 183   2          TH0=0xFB;              // 1ms        1000/0.8138  = 1228.8
+ 184   2          TL0=0x33;            //65536 - 1229 = 64307;  
+ 185   2      
+ 186   2      //    tfru_zdcnt = 0;
+ 187   2      //    tfru_zdfg = 0;
+ 188   2          
+ 189   2          ET0=1;      //ÔÊÐí¶¨Ê±Æ÷/¼ÆÊýÆ÷0 ÖÐ¶Ï
+ 190   2          TR0=1;      //Æô¶¯¶¨Ê±Æ÷/¼ÆÊýÆ÷0 ÖÐ¶Ï
+ 191   2        }
+ 192   1        else
+ 193   1        {
+ 194   2          ET0=0;      //²»ÔÊÐí¶¨Ê±Æ÷/¼ÆÊýÆ÷0 ÖÐ¶Ï
+ 195   2          TR0=0;      //Í£Ö¹Ê±Æ÷/¼ÆÊýÆ÷0 ÖÐ¶Ï
+ 196   2        }
+ 197   1        
+ 198   1      }
+ 199          
+ 200          #define FRUECNT  50
+ 201          
+ 202          /**************************************************************
+ 203          **º¯ÊýÃû³Æ£ºTimer0Zd
+ 204          **º¯ÊýÃèÊö£º¶¨Ê±Æ÷0ÖÐ¶Ï   
+ 205          **Èë¿Ú²ÎÊý£ºÎÞ
+ 206          **³ö¿Ú²ÎÊý£ºÎÞ
+ 207          ***************************************************************/
+ 208          void Timer0Zd(void) interrupt 1     //¶¨Ê±Æ÷0ÖÐ¶Ï
+ 209          {
+ 210   1      
+ 211   1        FlowSt.pumpTimeCount++;
+ 212   1        //TH0=0xF6;          // 2ms      2000/0.8138  = 2458
+ 213   1        //TL0=0x66;       //65536 - 2458 = 63078; 
+ 214   1        TH0=0xFB;          // 1ms    1000/0.8138  = 1228.8
+ 215   1        TL0=0x33;          //65536 - 1229 = 64307;  
+ 216   1      
+ 217   1      #if 1
+ 218   1        if(P35 == 1)
+ 219   1        {
+ 220   2          if((tPulse.perTtl == 0)&&(tPulse.ttl == 1))
+ 221   2          {
+ 222   3            if(tPulse.lowCnt < 3)
+ 223   3            {
+ 224   4              tPulse.lowCnt = 0;
+ 225   4            }
+ 226   3          }
+ 227   2          
+ 228   2          if(tPulse.ttl == 0) 
+ 229   2          {
+ 230   3            tPulse.higtCnt++;
+ 231   3            if(tPulse.higtCnt >= 30)
+ 232   3            {
+ 233   4              tPulse.higtCnt = 0;
+ 234   4              tPulse.ttl = 1;
+ 235   4              FlowSt.flowCount++;
+ 236   4            }
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 5   
+
+ 237   3          }
+ 238   2          
+ 239   2          tPulse.perTtl = 1;
+ 240   2        }
+ 241   1        else
+ 242   1        {
+ 243   2          if((tPulse.perTtl == 1)&&(tPulse.ttl == 0))
+ 244   2          {
+ 245   3            if(tPulse.higtCnt < 3)
+ 246   3            {
+ 247   4              tPulse.higtCnt = 0;
+ 248   4            }
+ 249   3          }
+ 250   2      
+ 251   2          if(tPulse.ttl == 1) 
+ 252   2          {   
+ 253   3            tPulse.lowCnt++;
+ 254   3            if(tPulse.lowCnt >= 30)
+ 255   3            {
+ 256   4              tPulse.lowCnt = 0;
+ 257   4              tPulse.ttl = 0;
+ 258   4              FlowSt.flowCount++;
+ 259   4            }
+ 260   3          }
+ 261   2      
+ 262   2          tPulse.perTtl = 0;
+ 263   2        }
+ 264   1      #endif  
+ 265   1      }
+ 266          
+ 267          /**************************************************************
+ 268          **º¯ÊýÃû³Æ£ºINT0Init
+ 269          **º¯ÊýÃèÊö£ºÍâ²¿0ÖÐ³õÊ¼»¯   
+ 270          **Èë¿Ú²ÎÊý£ºisStart      ÊÇ·ñ¿ªÆôÖÐ¶Ï          1¿ªÆô   0¹Ø±Õ
+ 271          **³ö¿Ú²ÎÊý£ºÎÞ
+ 272          ***************************************************************/
+ 273          void INT0Init(uint8_t     isStart)  //¿ª»ú
+ 274          {
+ 275   1      
+ 276   1        if(isStart)
+ 277   1        {
+ 278   2          P35F = 1; //ÉèÖÃP35ÎªÊäÈëÒý½Å
+ 279   2          IT0CON = 29;
+ 280   2      
+ 281   2          EX0 =1;   //INT0ÖÐ¶ÏÊ¹ÄÜ
+ 282   2          IE0 =1;   //Íâ²¿ÖÐ¶ÏÊ¹ÄÜ
+ 283   2          IT0 = 0; //ÉèÖÃÎªÏÂ½µÑØÖÐ¶Ï
+ 284   2          //PX0 = 1; //ÉèÖÃ INT0 Îª¸ßÓÅÏÈ¼¶
+ 285   2          tfru_zdcnt = 0; 
+ 286   2          tfru_zdfg = 0;
+ 287   2        }
+ 288   1        else
+ 289   1        {
+ 290   2          EX0 =0;   //INT0ÖÐ¶ÏÊ§ÄÜ
+ 291   2          IE0 =0;   //Íâ²¿ÖÐ¶ÏÊ§ÄÜ
+ 292   2        }
+ 293   1      
+ 294   1        IT0 =1;
+ 295   1        PX0 =1; 
+ 296   1      
+ 297   1      }
+ 298          
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 6   
+
+ 299          /**************************************************************
+ 300          **º¯ÊýÃû³Æ£ºINT0Zd
+ 301          **º¯ÊýÃèÊö£ºÍâ²¿0ÖÐ¶Ï  ×ª×ÓµÄÍâ²¿ÖÐ¶Ï¼ÆÊý 
+ 302          **Èë¿Ú²ÎÊý£ºÎÞ
+ 303          **³ö¿Ú²ÎÊý£ºÎÞ
+ 304          ***************************************************************/
+ 305          void INT0Zd(void) interrupt 0
+ 306          {
+ 307   1        //ÖÐ¶Ï  ×ª×ÓÁ÷Á¿¼Æ¼ÆÊý
+ 308   1      #if 0
+                //if(tfru_zd)
+                {
+                
+                  EX0 =0;   //INT0ÖÐ¶ÏÊ§ÄÜ
+                  IE0 =0;   //Íâ²¿ÖÐ¶ÏÊ§ÄÜ
+                  
+              //    tfru_zd = 0;
+              //    tfru_zdcnt = 0;
+                  FlowSt.flowCount++;
+              
+                  if(IT0)
+                  {
+                    IT0= 0; //ÉèÖÃÎªÏÂ½µÑØÖÐ¶Ï
+                    tfru_zdfg = 0;
+                  } 
+                  else
+                  {
+                    IT0= 1;
+                    tfru_zdfg = 1;
+                  }
+                    
+              
+                  EX0 =1;   //INT0ÖÐ¶ÏÊ¹ÄÜ
+                  IE0 =1;   //Íâ²¿ÖÐ¶ÏÊ¹ÄÜ
+              
+                }
+              #endif
+ 336   1      } 
+ 337          
+ 338          void UnitFlowCalculate(void)
+ 339          {
+ 340   1        if(FlowSt.dRationValue <= 300)
+ 341   1        {
+ 342   2          unitFlow_t = UNIT_FLOWMETER1;
+ 343   2          //FlowSt.tFlowCount = FlowSt.tFlowCount+1;
+ 344   2        }   
+ 345   1        else
+ 346   1        {
+ 347   2          unitFlow_t = UNIT_FLOWMETER2;
+ 348   2          
+ 349   2        }
+ 350   1          
+ 351   1      }
+ 352          void tFlowCalculate(void)
+ 353          {
+ 354   1        if(FlowSt.dRationValue <= 50)
+ 355   1        {
+ 356   2          FlowSt.tFlowCount = FlowSt.tFlowCount-1;
+ 357   2        }
+ 358   1      }
+ 359          
+ 360          
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 7   
+
+ 361          #if 1
+ 362          
+ 363          /**************************************************************
+ 364          **º¯ÊýÃû³Æ£ºKeyProcess
+ 365          **º¯ÊýÃèÊö£º°´¼ü´¦Àí¹ý³Ì   
+ 366          **Èë¿Ú²ÎÊý£ºÎÞ
+ 367          **³ö¿Ú²ÎÊý£ºÎÞ
+ 368          ***************************************************************/
+ 369          void KeyProcess(void)
+ 370          {
+ 371   1        uint8_t keynum;
+ 372   1        static uint8_t tkeycnt = 0;
+ 373   1        
+ 374   1        for(keynum = 0; keynum < 8; keynum++)
+ 375   1        {
+ 376   2            if(CheckKey(keynum) == SHORT_PRESS)
+ 377   2              {
+ 378   3      #ifdef PRINT_EN 
+                    uart_printf("KEY %d short press! \r\n",keynum+1);
+              #endif    
+ 381   3        //        ResetKey(keynum);
+ 382   3            if(!FlowSt.setMode)      //²»ÊÇÉèÖÃÄ£Ê½
+ 383   3            {
+ 384   4              if(FlowSt.stepRevolve == PUMP_STOP)     //¿ªÊ¼³éË®
+ 385   4              {
+ 386   5                FlowSt.dRationNum = keynum+1;
+ 387   5                FlowSt.dRationValue = FlowSt.rationValue[keynum];
+ 388   5                //UnitFlowCalculate();
+ 389   5                FlowSt.t_dRationValue = (uint32_t)(FlowSt.dRationValue); 
+ 390   5                Timer0Init(0);
+ 391   5                INT0Init(0);  
+ 392   5                UnitFlowCalculate();
+ 393   5                //FlowSt.tpumpTimeCount = (uint32_t)(((double)FlowSt.t_dRationValue/UNIT_FLOWPUMP)+0.500); //¼ÆËãË®±Ã
+             -¿ªÊ¼µÄÄ¿±êÊ±¼ä
+ 394   5                FlowSt.tFlowCount = (uint32_t)(((double)((double)FlowSt.t_dRationValue)/unitFlow_t)+0.500);  //¼ÆËãÁ÷
+             -Á¿¼ÆµÄÄ¿±ê¼ÆÊýÖµ
+ 395   5                tFlowCalculate();
+ 396   5                FlowSt.stepRevolve = PUMP_READY;
+ 397   5                FlowSt.readyCountDown = 100;
+ 398   5      
+ 399   5                WriteRationValueToMemory();
+ 400   5                
+ 401   5      #ifdef PRINT_EN
+                        uart_printf("Num:%u,RationValue:%lu,zCnt:%lu \r\n",FlowSt.dRationNum,FlowSt.dRationValue,FlowSt.tFlow
+             -Count);
+              #endif
+ 404   5              }
+ 405   4              else
+ 406   4              {
+ 407   5                FlowSt.stepRevolve = PUMP_STOP;   //Í£Ö¹³éË®
+ 408   5                rationStopTimeCnt = RATION_STOP_CNT;
+ 409   5              }
+ 410   4            }
+ 411   3            else          //ÉèÖÃÄ£Ê½
+ 412   3            { //±£´æ
+ 413   4              if(FlowSt.dRationNum == keynum+1)
+ 414   4              {
+ 415   5                FlowSt.rationValue[keynum]=FlowSt.dRationValue;
+ 416   5              }
+ 417   4              WriteRationValueToMemory();
+ 418   4              FlowSt.setMode = 0;
+ 419   4            }
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 8   
+
+ 420   3      
+ 421   3              }   
+ 422   2          else if(CheckKey(keynum) == TWICE_PRESS)
+ 423   2          {
+ 424   3        //    ResetKey(keynum);
+ 425   3      #ifdef PRINT_EN   
+                    uart_printf("KEY %d twice press! \r\n",keynum+1);
+              #endif
+ 428   3            if(!FlowSt.setMode)    //²»ÊÇÉèÖÃÄ£Ê½
+ 429   3            {
+ 430   4              if(FlowSt.stepRevolve == PUMP_STOP)   //¿ªÊ¼³éË®
+ 431   4              {
+ 432   5                FlowSt.dRationNum = keynum+1;
+ 433   5                FlowSt.dRationValue = FlowSt.rationValue[keynum]*2;
+ 434   5                //UnitFlowCalculate();
+ 435   5                FlowSt.t_dRationValue = (uint32_t)(FlowSt.dRationValue); 
+ 436   5                Timer0Init(0);
+ 437   5                INT0Init(0);
+ 438   5                UnitFlowCalculate();
+ 439   5                //FlowSt.tpumpTimeCount = (uint32_t)(((double)FlowSt.t_dRationValue/UNIT_FLOWPUMP)+0.5); //¼ÆËãË®±Ã¿ª
+             -Ê¼µÄÄ¿±êÊ±¼ä
+ 440   5                FlowSt.tFlowCount = (uint32_t)(((double)FlowSt.t_dRationValue/unitFlow_t)+0.5);  //¼ÆËãÁ÷Á¿¼ÆµÄÄ¿±ê¼Æ
+             -ÊýÖµ
+ 441   5                tFlowCalculate();
+ 442   5                FlowSt.stepRevolve = PUMP_READY;
+ 443   5                FlowSt.readyCountDown = 100;
+ 444   5                
+ 445   5                WriteRationValueToMemory();
+ 446   5      #ifdef PRINT_EN       
+                        uart_printf("Num: %u,RationValue: %lu, zCnt: %lu \r\n",FlowSt.dRationNum,FlowSt.dRationValue,FlowSt.t
+             -FlowCount);
+              #endif
+ 449   5              }
+ 450   4              else          
+ 451   4              {
+ 452   5                FlowSt.stepRevolve = PUMP_STOP;   //Í£Ö¹³éË®
+ 453   5                rationStopTimeCnt = RATION_STOP_CNT;
+ 454   5              }
+ 455   4            }
+ 456   3      
+ 457   3          }
+ 458   2          
+ 459   2          else if(CheckKey(keynum) == LONG_PRESS)
+ 460   2          {
+ 461   3        //    ResetKey(keynum);
+ 462   3      #ifdef PRINT_EN     
+                    uart_printf("KEY %d long press! \r\n",keynum+1);
+              #endif
+ 465   3            if(FlowSt.stepRevolve == PUMP_STOP)     //½øÈëÉèÖÃÄ£Ê½
+ 466   3            {
+ 467   4              FlowSt.dRationNum = keynum+1;
+ 468   4              FlowSt.dRationValue = FlowSt.rationValue[keynum];
+ 469   4              FlowSt.t_dRationValue = FlowSt.dRationValue; 
+ 470   4              FlowSt.stepRevolve = PUMP_STOP;
+ 471   4              FlowSt.setMode = 1;
+ 472   4            }
+ 473   3            else
+ 474   3            {
+ 475   4              FlowSt.stepRevolve = PUMP_STOP;
+ 476   4              rationStopTimeCnt = RATION_STOP_CNT;
+ 477   4            }
+ 478   3          }
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 9   
+
+ 479   2        }
+ 480   1      
+ 481   1        if(FlowSt.setMode)
+ 482   1        {
+ 483   2          if(CheckKey(KEY_UP) == SHORT_PRESS)
+ 484   2          {
+ 485   3      #ifdef PRINT_EN   
+                    uart_printf("KEY_UP short press! \r\n");
+              #endif
+ 488   3        //    ResetKey(KEY_UP);
+ 489   3            FlowSt.dRationValue++; 
+ 490   3            if(FlowSt.dRationValue > MAX_RATION_VALUE)
+ 491   3            {
+ 492   4              FlowSt.dRationValue = MIN_RATION_VALUE;
+ 493   4            }
+ 494   3          }
+ 495   2          else if(CheckKey(KEY_UP) == TWICE_PRESS)
+ 496   2          {
+ 497   3          //  ResetKey(KEY_UP);
+ 498   3            FlowSt.dRationValue = FlowSt.dRationValue+2;
+ 499   3            if(FlowSt.dRationValue > MAX_RATION_VALUE)
+ 500   3            {
+ 501   4              FlowSt.dRationValue = MIN_RATION_VALUE;
+ 502   4            } 
+ 503   3          }
+ 504   2          else if(CheckKey(KEY_UP) == THREE_PRESS)
+ 505   2          {
+ 506   3          //  ResetKey(KEY_UP);
+ 507   3            FlowSt.dRationValue = FlowSt.dRationValue+3;
+ 508   3            if(FlowSt.dRationValue > MAX_RATION_VALUE)
+ 509   3            {
+ 510   4              FlowSt.dRationValue = MIN_RATION_VALUE;
+ 511   4            } 
+ 512   3          }   
+ 513   2          else if(IsLongPress(KEY_UP))
+ 514   2          {
+ 515   3            tkeycnt++;
+ 516   3            if(tkeycnt > 20)
+ 517   3            {
+ 518   4              tkeycnt = 0;
+ 519   4      #ifdef PRINT_EN           
+                              uart_printf("KEY_UP Long press! \r\n");
+              #endif
+ 522   4              //      ResetKey(KEY_UP);
+ 523   4                      FlowSt.dRationValue++; 
+ 524   4                      if(FlowSt.dRationValue > MAX_RATION_VALUE)
+ 525   4                      {
+ 526   5                          FlowSt.dRationValue = MIN_RATION_VALUE;
+ 527   5                      }   
+ 528   4      
+ 529   4            }
+ 530   3          
+ 531   3          }
+ 532   2          
+ 533   2          if(CheckKey(KEY_DOWN) == SHORT_PRESS)
+ 534   2          {
+ 535   3      #ifdef PRINT_EN   
+                    uart_printf("KEY_DOWN short press! \r\n");
+              #endif
+ 538   3            if(FlowSt.dRationValue < (MIN_RATION_VALUE+1))
+ 539   3            {
+ 540   4              FlowSt.dRationValue = MAX_RATION_VALUE;
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 10  
+
+ 541   4            }
+ 542   3            else
+ 543   3            {
+ 544   4              FlowSt.dRationValue = FlowSt.dRationValue-1;
+ 545   4            }
+ 546   3      
+ 547   3            if(FlowSt.dRationValue < MIN_RATION_VALUE)
+ 548   3            {
+ 549   4              FlowSt.dRationValue = MAX_RATION_VALUE;
+ 550   4              
+ 551   4            }
+ 552   3            else if(FlowSt.dRationValue > MAX_RATION_VALUE)
+ 553   3            {
+ 554   4              FlowSt.dRationValue = MAX_RATION_VALUE;
+ 555   4            } 
+ 556   3          }
+ 557   2          else if(CheckKey(KEY_DOWN) == TWICE_PRESS)
+ 558   2          {
+ 559   3            if(FlowSt.dRationValue < (MIN_RATION_VALUE+2))
+ 560   3            {
+ 561   4              FlowSt.dRationValue = MAX_RATION_VALUE;
+ 562   4            }
+ 563   3            else
+ 564   3            {
+ 565   4              FlowSt.dRationValue = FlowSt.dRationValue-2;
+ 566   4            }
+ 567   3            
+ 568   3            if(FlowSt.dRationValue < MIN_RATION_VALUE)
+ 569   3            {
+ 570   4              FlowSt.dRationValue = MAX_RATION_VALUE;
+ 571   4              
+ 572   4            }
+ 573   3            else if(FlowSt.dRationValue > MAX_RATION_VALUE)
+ 574   3            {
+ 575   4              FlowSt.dRationValue = MAX_RATION_VALUE;
+ 576   4            }
+ 577   3          }
+ 578   2          else if(CheckKey(KEY_DOWN) == THREE_PRESS)
+ 579   2          {
+ 580   3            if(FlowSt.dRationValue < (MIN_RATION_VALUE+3))
+ 581   3            {
+ 582   4              FlowSt.dRationValue = MAX_RATION_VALUE;
+ 583   4            }
+ 584   3            else
+ 585   3            {
+ 586   4              FlowSt.dRationValue = FlowSt.dRationValue-3;
+ 587   4            }
+ 588   3      
+ 589   3            if(FlowSt.dRationValue < MIN_RATION_VALUE)
+ 590   3            {
+ 591   4              FlowSt.dRationValue = MAX_RATION_VALUE;
+ 592   4            }
+ 593   3            else if(FlowSt.dRationValue > MAX_RATION_VALUE)
+ 594   3            {
+ 595   4              FlowSt.dRationValue = MAX_RATION_VALUE;
+ 596   4            } 
+ 597   3          }   
+ 598   2          else if(IsLongPress(KEY_DOWN))
+ 599   2          {
+ 600   3            tkeycnt++;
+ 601   3            if(tkeycnt > 20)
+ 602   3            {
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 11  
+
+ 603   4              tkeycnt = 0;
+ 604   4      #ifdef PRINT_EN         
+                              uart_printf("KEY_UP Long press! \r\n");
+              #endif
+ 607   4              if(FlowSt.dRationValue < (MIN_RATION_VALUE+1))
+ 608   4              {
+ 609   5                FlowSt.dRationValue = MAX_RATION_VALUE;
+ 610   5              }
+ 611   4              else
+ 612   4              {
+ 613   5                FlowSt.dRationValue = FlowSt.dRationValue-1;
+ 614   5              }
+ 615   4      
+ 616   4              if(FlowSt.dRationValue < MIN_RATION_VALUE)
+ 617   4              {
+ 618   5                FlowSt.dRationValue = MAX_RATION_VALUE;
+ 619   5                
+ 620   5              }
+ 621   4              else if(FlowSt.dRationValue > MAX_RATION_VALUE)
+ 622   4              {
+ 623   5                FlowSt.dRationValue = MAX_RATION_VALUE;
+ 624   5              } 
+ 625   4      
+ 626   4            }
+ 627   3          
+ 628   3          }   
+ 629   2        
+ 630   2        }
+ 631   1        else
+ 632   1        {
+ 633   2              tkeycnt = 0;
+ 634   2        }
+ 635   1        
+ 636   1      }
+ 637          #endif  
+ 638          
+ 639          void ResetPulse(void)
+ 640          {
+ 641   1        tPulse.curTtl = 0;
+ 642   1        tPulse.flipFg = 0;
+ 643   1        tPulse.higtCnt = 0;
+ 644   1        tPulse.lowCnt = 0;
+ 645   1        tPulse.perTtl = 0;
+ 646   1        tPulse.ttl = 0;
+ 647   1      }
+ 648          
+ 649          
+ 650          void RevolveProcess(void)
+ 651          {
+ 652   1        static uint8_t ReadyCount_t;
+ 653   1        switch(FlowSt.stepRevolve)
+ 654   1        {
+ 655   2          case PUMP_STOP:
+ 656   2              PUMP_OUT = PUMP_OFF;
+ 657   2              Timer0Init(0);
+ 658   2              INT0Init(0);
+ 659   2            break;
+ 660   2          case PUMP_READY:
+ 661   2            if(ReadyCount_t != (uint8_t)Time_ms)
+ 662   2            {
+ 663   3              ReadyCount_t = (uint8_t)Time_ms;
+ 664   3              FlowSt.readyCountDown--;
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 12  
+
+ 665   3              if(FlowSt.readyCountDown == 0)
+ 666   3              {
+ 667   4                FlowSt.stepRevolve = PUMP_OPEN;
+ 668   4                
+ 669   4                //Æô¶¯¶¨Ê±Æ÷ ¶¨Ê±Æ÷¼ÆÊý¡£Ã¿¼ÇÒ»´ÎË®±ÃµÄÁ÷Á¿Ò»¶¨£¬×ÜÁ÷Á¿³ýÒÔµ¥Î»Á÷Á¿µÈÓÚ×ÜÊ±¼ä¡£¼ÆÊ±¼Çµ½×ÜÊ±¼äË®±ÃÍ£Ö¹
+             -¡£
+ 670   4                FlowSt.pumpTimeCount = 0;
+ 671   4                FlowSt.flowCount = 0;
+ 672   4                Timer0Init(1);  //¿ªÆô¶¨Ê±Æ÷0ÖÐ¶Ï
+ 673   4                INT0Init(0);  //¿ªÆôÍâ²¿ÖÐ¶Ï0ÖÐ¶Ï 
+ 674   4                ResetPulse();
+ 675   4                PUMP_OUT = PUMP_ON;
+ 676   4      #ifdef PRINT_EN           
+                        uart_printf("PUMP_OPEN!ziCnt:%lu\r\n",FlowSt.flowCount);
+              #endif
+ 679   4              }
+ 680   3            }
+ 681   2            break;
+ 682   2          case PUMP_OPEN:
+ 683   2            {
+ 684   3              uint32_t FlowValue_t;
+ 685   3      
+ 686   3              FlowValue_t = (uint32_t)((double)FlowSt.flowCount*unitFlow_t);    //×ÜÁ÷Á¿ÓëÁ÷Á¿¼Æ¼ÆÊýµÄ»»Ëã
+ 687   3              //FlowValue_t = (uint32_t)((double)FlowSt.pumpTimeCount*UNIT_FLOWPUMP);   //×ÜÁ÷Á¿ÓëÊ±¼ä¼ÆÊýµÄ»»Ëã
+ 688   3      
+ 689   3              if(FlowValue_t > FlowSt.t_dRationValue) FlowValue_t = FlowSt.t_dRationValue;
+ 690   3      
+ 691   3              FlowSt.dRationValue = (uint16_t)(FlowSt.t_dRationValue - FlowValue_t);
+ 692   3      
+ 693   3              //if((FlowSt.pumpTimeCount >= (FlowSt.tpumpTimeCount)) &&(FlowSt.flowCount >= FlowSt.tFlowCount))
+ 694   3              //if(FlowSt.pumpTimeCount >= (FlowSt.tpumpTimeCount))
+ 695   3              
+ 696   3                
+ 697   3              if((FlowSt.flowCount >= (FlowSt.tFlowCount)))
+ 698   3              {
+ 699   4                //Í£Ö¹¶¨Ê±Æ÷¼ÆÊý 
+ 700   4                PUMP_OUT = PUMP_OFF;
+ 701   4                Timer0Init(0);
+ 702   4                
+ 703   4                INT0Init(0);          
+ 704   4                FlowSt.stepRevolve = PUMP_STOP;
+ 705   4                FlowSt.dRationValue = 0;
+ 706   4      #ifdef PRINT_EN           
+                        uart_printf("ST!zCnt:%lu,pTC:%lu,pCnt:%lu\r\n",FlowSt.flowCount,FlowSt.pumpTimeCount,FlowSt.tpumpTime
+             -Count);
+              #endif
+ 709   4                rationStopTimeCnt = RATION_STOP_CNT;
+ 710   4              }
+ 711   3              
+ 712   3            }
+ 713   2      
+ 714   2            break;
+ 715   2          default:
+ 716   2            break;
+ 717   2        }
+ 718   1      }
+ 719          
+ 720          /**************************************************************
+ 721          **º¯ÊýÃû³Æ£ºDispalyDigital()
+ 722          **º¯ÊýÃèÊö£ºÊýÂë¹ÜÏÔÊ¾¹ý³Ì
+ 723          **Èë¿Ú²ÎÊý£ºÎÞ
+ 724          **³ö¿Ú²ÎÊý£ºÎÞ
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 13  
+
+ 725          ***************************************************************/
+ 726          void DispalyDigital(void)
+ 727          {
+ 728   1        static uint8_t digitalFlushTime;
+ 729   1        static uint8_t digitalFlushTime_t;
+ 730   1        static uint8_t setModeDigitalFlushTime_t;
+ 731   1        static uint8_t destroyfg = 0;
+ 732   1        
+ 733   1        if(digitalFlushTime_t != (uint8_t)Time_ms)  
+ 734   1        {
+ 735   2          digitalFlushTime_t = (uint8_t)Time_ms;
+ 736   2          digitalFlushTime++;
+ 737   2          
+ 738   2          if(rationStopTimeCnt > 0)
+ 739   2          {
+ 740   3            rationStopTimeCnt--;
+ 741   3          }
+ 742   2          
+ 743   2          if(digitalFlushTime >= 20)
+ 744   2          {
+ 745   3            digitalFlushTime = 0;
+ 746   3            if(FlowSt.setMode)          // ÔÚÉèÖÃÄ£Ê½ÏÂ£¬¶¨Á¿ºÅÒªÉÁË¸
+ 747   3            {
+ 748   4                      setModeDigitalFlushTime_t++;
+ 749   4                      if(setModeDigitalFlushTime_t > 5)
+ 750   4                      {
+ 751   5                          setModeDigitalFlushTime_t = 0;
+ 752   5                          if(destroyfg)
+ 753   5                          {
+ 754   6                              destroyfg = 0;
+ 755   6                          }
+ 756   5                          else
+ 757   5                          {
+ 758   6                              destroyfg = 1;
+ 759   6                          }
+ 760   5                      }
+ 761   4            }
+ 762   3            else
+ 763   3            {
+ 764   4                      destroyfg = 0;
+ 765   4              if((rationStopTimeCnt == 0) && (  FlowSt.stepRevolve == PUMP_STOP))
+ 766   4              {
+ 767   5                FlowSt.dRationValue = FlowSt.rationValue[FlowSt.dRationNum-1];
+ 768   5              }       
+ 769   4            }
+ 770   3      
+ 771   3            DispalyDigitalBuf[1] = table_YIN[FlowSt.dRationValue/1000];
+ 772   3            DispalyDigitalBuf[2] = table_YIN[FlowSt.dRationValue%1000/100];
+ 773   3            DispalyDigitalBuf[3] = table_YIN[FlowSt.dRationValue%100/10];
+ 774   3            DispalyDigitalBuf[0] = table_YIN[FlowSt.dRationValue%10];
+ 775   3            if(destroyfg)
+ 776   3            {
+ 777   4                      DispalyDigitalBuf[4] = table_YIN[10];
+ 778   4            }
+ 779   3            else
+ 780   3            {
+ 781   4                      DispalyDigitalBuf[4] = table_YIN[FlowSt.dRationNum];
+ 782   4            }
+ 783   3            TM1640_SendData(0, DispalyDigitalBuf, 5);
+ 784   3          }
+ 785   2            
+ 786   2        }
+C51 COMPILER V9.54   FLOWFUNCTION                                                          08/08/2019 01:38:59 PAGE 14  
+
+ 787   1        
+ 788   1      }
+ 789          
+ 790          void FlowProcess(void)
+ 791          {
+ 792   1      
+ 793   1        AllKeyScan();
+ 794   1        //KeyProcess();
+ 795   1        RevolveProcess();
+ 796   1        DispalyDigital();
+ 797   1        BuzzerCrl();
+ 798   1      
+ 799   1      }
+ 800          
+ 801          #endif
+ 802          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1881    ----
+   CONSTANT SIZE    =     20    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =     56      47
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =     11    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

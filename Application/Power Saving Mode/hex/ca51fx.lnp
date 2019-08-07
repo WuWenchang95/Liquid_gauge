@@ -1,0 +1,15 @@
+".\hex\main.obj",
+".\hex\system_clock.obj",
+".\hex\wdt.obj",
+".\hex\key.obj",
+".\hex\Flowfunction.obj",
+".\hex\TM1640.obj",
+".\hex\buzzer.obj",
+".\hex\flash.obj",
+".\hex\delay.obj",
+".\hex\uart.obj",
+".\hex\STARTUP.obj" 
+TO ".\hex\ca51fx" 
+PRINT(".\lst\ca51fx.m51") RAMSIZE(256) 
+CODE( 0X0000-0X7FFF )
+XDATA( 0X0000-0X0FFF )

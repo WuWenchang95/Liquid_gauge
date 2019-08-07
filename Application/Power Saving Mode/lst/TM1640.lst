@@ -1,0 +1,360 @@
+C51 COMPILER V9.54   TM1640                                                                08/08/2019 01:39:00 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE TM1640
+OBJECT MODULE PLACED IN .\hex\TM1640.obj
+COMPILER INVOKED BY: D:\OfficeSoftware\KEIL_C51\C51\BIN\C51.EXE TM1640.c COMPACT ROM(COMPACT) OPTIMIZE(9,SIZE) BROWSE DE
+                    -BUG OBJECTEXTEND PRINT(.\lst\TM1640.lst) TABS(2) OBJECT(.\hex\TM1640.obj)
+
+line level    source
+
+   1          #ifndef _TM1640_C_
+   2          #define _TM1640_C_
+   3          
+   4          #include "ca51f_config.h"
+   5          #if (IC_TYPE == IC_TYPE_CA51F2X)
+              #include "../../includes/ca51f2sfr.h"
+              #include "../../includes/ca51f2xsfr.h"
+              #include "../../includes/gpiodef_f2.h"
+              #elif (IC_TYPE == IC_TYPE_CA51F3X)
+  10          #include "../../includes/ca51f3sfr.h"
+  11          #include "../../includes/ca51f3xsfr.h"
+  12          #include "../../includes/gpiodef_f3.h"
+  13          #endif
+  14          #include "../../includes/system.h"
+  15          #include "TM1640.h"
+  16          
+  17          #include <intrins.h>
+  18          
+  19          
+  20          /* 
+  21          控制显示 
+  22          0x88,0x89,0x8a,0x8b,0x8c,0x8d,0x8e,0x8f 分别对应 
+  23          1/16,  2/16,  4/16,  10/16, 11/16, 12/16, 13/16, 14/16    
+  24           
+  25          设置数据，0x40,0x44分别对应地址自动加一和固定地址模式      
+  26          */  
+  27            
+  28          #define SET_DATA_ORDER        0X40  //数据命令设置 地址自动加1  
+  29          #define SET_DISPLAY           0x8a//0x89//0X8B //0X8F  //显示命令控制  脉冲宽度14/16  
+  30          #define SET_DSP1640_DIS       0x80  //显示关控制  
+  31           
+  32          #define     VT_DLY1640              40//450// 80//10//2000  
+  33          #define     VT_DLYNOP               20//180//5//80//10 
+  34          
+  35          #define   TM1640_DO     P00
+  36          #define   TM1640_CLK    P01
+  37          
+  38          
+  39          #define    TM1640_DO_LOW        (TM1640_DO = 0)
+  40          
+  41                                
+  42          #define    TM1640_DO_HIGT       (TM1640_DO = 1)
+  43          
+  44          
+  45          #define    TM1640_CLK_LOW       (TM1640_CLK = 0)
+  46                            
+  47                               
+  48          #define    TM1640_CLK_HIGT     (TM1640_CLK = 1)
+  49          
+  50          
+  51                             
+  52          
+  53          /*  =========段码与数字对应关系=共阳================
+  54                    --a--
+C51 COMPILER V9.54   TM1640                                                                08/08/2019 01:39:00 PAGE 2   
+
+  55                    |     |
+  56                    f     b
+  57                    --g--
+  58              |     |
+  59                    e     c
+  60                    --d-- *
+  61           */
+  62            /*  =========段码与数字对应关系=共阳================
+  63                  --a--         f  a b g c dp d e       
+  64                  |   |           dp g f e d c b a 
+  65                  f   b       1  1 0 1 1 1 1 0     0xDE  // 0 
+  66                  --g--         1  0 0 0 1 0 0 0     0x88  // 1 
+  67                |   |         0  1 0 1 1 1 0 1     0x5d  // 2
+  68                  e   c       1  0 0 1 1 1 0 1     0x9d  // 3
+  69                  --d-- *   dp      1  0 0 0 1 0 1 1     0x8b  // 4 
+  70                              1  0 0 1 0 1 1 1     0x97  //5
+  71                                1  1 0 1 0 1 1 1     0xd7  //6
+  72                                1  0 0 1 1 0 0 0     0x98  //7
+  73                                1  1 0 1 1 1 1 1     0xdf  //8
+  74                                1  0 0 1 1 1 1 1     0x9f  //9
+  75             */
+  76                            // f  a b g c dp d e        
+  77          /*                     1  1 1 0 1 0  1 1      0xeb //0
+  78                               0  0 1 0 1 0  0 0      0x28 //1  
+  79                               0  1 1 1 0 0  1 1      0x73 //2
+  80                               0  1 1 1 1 0  1 0     0x7A //3
+  81                               1  0 1 1 1 0  0 0     0xb8 //4
+  82                               1  1 0 1 1 0  1 0     0xda //5
+  83                               1  1 0 1 1 0  1 1     0xdb  //6
+  84                               0  1 1 0 1 0  0 0     0x68  //7
+  85                               1  1 1 1 1 0  1 1     0xfb  //8
+  86                               1  1 1 1 1 0  1 0     0xFa  //9
+  87          */
+  88          //1、共阳：
+  89          //char xdata table_YANG[]={0xc0,0xf9,0xa4,0xb0,0x99,0x92,0x82,0xf8,0x80,0x90,0x88,0x83,0xc6,0xa1,0x86,0x8e
+             -};
+  90          //2、共阴：
+  91          /*
+  92          code unsigned char  table_YIN[]={
+  93            0x3f,//0
+  94            0x06,//1
+  95            0x5b,//2
+  96            0x4f,//3
+  97            0x66,//4
+  98            0x6d,//5
+  99            0x7d,//6
+ 100            0x07,//7
+ 101            0x7f,//8
+ 102            0x6f,//9
+ 103            0x77,//a
+ 104            0x7c,//b
+ 105            0x39,//c
+ 106            0x5e,//d
+ 107            0x79,//e
+ 108            0x71,//f
+ 109            0X76,//H
+ 110            0X38,//L
+ 111            0X00//无
+ 112          };
+ 113          
+ 114          */
+ 115          //2、共阴：
+C51 COMPILER V9.54   TM1640                                                                08/08/2019 01:39:00 PAGE 3   
+
+ 116          
+ 117          code unsigned char  table_YIN[]={
+ 118            0xeb, //0
+ 119            0x28, //1  
+ 120            0x73, //2
+ 121            0x7A, //3
+ 122            0xb8, //4
+ 123            0xda,//5
+ 124            0xdb, //6
+ 125            0x68, //7
+ 126            0xfb, //8
+ 127            0xfa, //9
+ 128          
+ 129            0X00,//无
+ 130          };
+ 131          
+ 132          
+ 133          
+ 134          void TM1640Init(void)
+ 135          {
+ 136   1        GPIO_Init(P00F,OUTPUT );
+ 137   1        GPIO_Init(P01F,OUTPUT );
+ 138   1        
+ 139   1        TM1640_Init(DSP1640_ENB);
+ 140   1      }
+ 141          
+ 142          //*************************************  
+ 143          // 函数名称：_Nopt  
+ 144          // 函数功能：延时函数  
+ 145          // 入口参数：延时时间  
+ 146          // 出口参数：无  
+ 147          //***************************************/  
+ 148          void Nop1640(uint16_t T_Dly)  
+ 149          {     
+ 150   1          while(T_Dly--)
+ 151   1        {
+ 152   2          _nop_();     
+ 153   2        }
+ 154   1          return ;  
+ 155   1      }  
+ 156          //****************************************  
+ 157          // 函数名称：TM1640Start  
+ 158          // 函数功能：TM1640起始信号  
+ 159          // 入口参数：无  
+ 160          // 出口参数：无  
+ 161          //***************************************/  
+ 162          void TM1640Start(void)  
+ 163          {   
+ 164   1      
+ 165   1          TM1640_DO_HIGT;  
+ 166   1          Nop1640(VT_DLYNOP);  
+ 167   1          TM1640_CLK_HIGT;  
+ 168   1          Nop1640(VT_DLY1640);  
+ 169   1          TM1640_DO_LOW;  
+ 170   1          Nop1640(VT_DLY1640);  
+ 171   1          TM1640_CLK_LOW;  
+ 172   1          Nop1640(VT_DLY1640);  
+ 173   1      
+ 174   1      }  
+ 175          //*************************************  
+ 176          // 函数名称：TM1640Stop  
+ 177          // 函数功能：TM1640结束信号  
+C51 COMPILER V9.54   TM1640                                                                08/08/2019 01:39:00 PAGE 4   
+
+ 178          // 入口参数：无  
+ 179          // 出口参数：无  
+ 180          //***************************************/  
+ 181          void TM1640Stop(void)  
+ 182          {  
+ 183   1          TM1640_CLK_LOW;  
+ 184   1          Nop1640(VT_DLY1640) ;
+ 185   1      
+ 186   1          TM1640_DO_LOW;    
+ 187   1          Nop1640(VT_DLYNOP) ;  
+ 188   1          TM1640_CLK_HIGT;  
+ 189   1          Nop1640(VT_DLY1640) ;  
+ 190   1          TM1640_DO_HIGT;  
+ 191   1          Nop1640(VT_DLY1640) ;  
+ 192   1          TM1640_CLK_LOW;  
+ 193   1          Nop1640(VT_DLY1640) ;  
+ 194   1      
+ 195   1      }  
+ 196          
+ 197          
+ 198          //*************************************  
+ 199          // 函数名称：TM1640WriteByte  
+ 200          // 函数功能：TM1640写一字节数据  
+ 201          // 入口参数：要写的数据  
+ 202          // 出口参数：无  
+ 203          //***************************************/  
+ 204          void TM1640WriteByte(char date)  
+ 205          {  
+ 206   1              uint8_t i;  
+ 207   1              uint8_t Tmp;  
+ 208   1                
+ 209   1              Tmp=date;  
+ 210   1              
+ 211   1              TM1640_DO_LOW;    
+ 212   1              Nop1640(VT_DLYNOP) ;  
+ 213   1              TM1640_CLK_LOW;  
+ 214   1                
+ 215   1              for(i=0;i<8;i++)  
+ 216   1              {  
+ 217   2                      TM1640_CLK_LOW;
+ 218   2                      Nop1640(VT_DLYNOP) ;  
+ 219   2                      if(Tmp & 0x01)  
+ 220   2                      {  
+ 221   3                              TM1640_DO_HIGT;  
+ 222   3                              Nop1640(VT_DLY1640) ;  
+ 223   3                      }  
+ 224   2                      else  
+ 225   2                      {  
+ 226   3                              TM1640_DO_LOW;    
+ 227   3                              Nop1640(VT_DLY1640) ;  
+ 228   3                      }  
+ 229   2                      TM1640_CLK_HIGT;  
+ 230   2                      Tmp = Tmp>>1;  
+ 231   2              }  
+ 232   1                
+ 233   1              TM1640_CLK_LOW;  
+ 234   1              Nop1640(VT_DLYNOP) ;  
+ 235   1              TM1640_DO_LOW;   
+ 236   1      
+ 237   1      }  
+ 238          //*************************************  
+ 239          // 函数名称：TM1640_Init  
+C51 COMPILER V9.54   TM1640                                                                08/08/2019 01:39:00 PAGE 5   
+
+ 240          // 函数功能：TM1640设备初始化  
+ 241          // 入口参数：0 1 代表 显示关 显示开  
+ 242          // 出口参数：无  
+ 243          //***************************************/  
+ 244           void TM1640_Init(char InValue)    
+ 245          {  
+ 246   1      
+ 247   1              TM1640_DO_HIGT;  
+ 248   1              Nop1640(VT_DLYNOP);                 
+ 249   1              TM1640_CLK_HIGT;  
+ 250   1                
+ 251   1              if(InValue == DSP1640_DIS) //显示关  
+ 252   1              {  
+ 253   2                      TM1640Start();  
+ 254   2                      TM1640WriteByte(SET_DSP1640_DIS);//  
+ 255   2                      TM1640Stop();         
+ 256   2              }  
+ 257   1              else  
+ 258   1              {  
+ 259   2                      TM1640Start();//数据写模式设置  
+ 260   2                      TM1640WriteByte(SET_DATA_ORDER);//  
+ 261   2                      TM1640Stop();  
+ 262   2                        
+ 263   2                      TM1640Start(); //显示亮度设置  
+ 264   2                      TM1640WriteByte(SET_DISPLAY); //0x80关显示            
+ 265   2                      TM1640Stop();  
+ 266   2              }  
+ 267   1      
+ 268   1      }  
+ 269          
+ 270          //*************************************  
+ 271          // 函数名称：TM1640_SendData  
+ 272          // 函数功能：发送显示缓存  
+ 273          // 入口参数：1640要写数据的起始地址  
+ 274          //           显示数据缓存的起始地址 
+ 275          //       数据长度  
+ 276          // 出口参数：无  
+ 277          //***************************************/  
+ 278          void TM1640_SendData(char Addr1640,char *a,char DataLong)  
+ 279          {  
+ 280   1          uint8_t i;    
+ 281   1            
+ 282   1          TM1640Start();  
+ 283   1          TM1640WriteByte(ADDR_START1640+Addr1640); //设置起始地址  
+ 284   1            
+ 285   1          for(i=0;i<DataLong;i++)  
+ 286   1          {  
+ 287   2              TM1640WriteByte(a[i]);   
+ 288   2          }  
+ 289   1          
+ 290   1          TM1640Stop();   
+ 291   1      }
+ 292          
+ 293          #if 0
+              void TM1640_SendData_test(void)
+              {
+              #if 1
+              //    uint8_t i;   
+                  uint8_t tmp = 0x80;
+                
+                  TM1640Start(2);  
+                  TM1640WriteByte(0xc0+15,2); //设置起始地址  
+C51 COMPILER V9.54   TM1640                                                                08/08/2019 01:39:00 PAGE 6   
+
+                   
+                  TM1640WriteByte(tmp,2);   
+                  
+                  TM1640Stop(2);   
+                
+              #else
+                  u8 i;    
+                  u8 a[16] = {0};
+                  TM1640Start();  
+                  TM1640WriteByte(0xc0); //设置起始地址  
+                    
+                  for(i=0;i<16;i++)  
+                  {  
+                      TM1640WriteByte(a[i]);   
+                  }  
+                  
+                  TM1640Stop();   
+              
+              #endif
+              }
+              #endif
+ 323          #endif
+ 324          
+ 325          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    252    ----
+   CONSTANT SIZE    =     11    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----       6
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

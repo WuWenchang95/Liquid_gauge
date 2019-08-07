@@ -1,0 +1,1 @@
+"..\..\Library\Sources\wdt.c" COMPACT ROM(COMPACT) OPTIMIZE (9,SIZE) BROWSE DEBUG OBJECTEXTEND PRINT(.\lst\wdt.lst) TABS (2) OBJECT(.\hex\wdt.obj)

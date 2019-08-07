@@ -1,0 +1,1 @@
+"..\..\Library\Sources\uart.c" COMPACT ROM(COMPACT) OPTIMIZE (9,SIZE) BROWSE DEBUG OBJECTEXTEND PRINT(.\lst\uart.lst) TABS (2) OBJECT(.\hex\uart.obj)

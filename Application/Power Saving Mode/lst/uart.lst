@@ -1,0 +1,374 @@
+C51 COMPILER V9.54   UART                                                                  08/08/2019 01:39:00 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE UART
+OBJECT MODULE PLACED IN .\hex\uart.obj
+COMPILER INVOKED BY: D:\OfficeSoftware\KEIL_C51\C51\BIN\C51.EXE ..\..\Library\Sources\uart.c COMPACT ROM(COMPACT) OPTIMI
+                    -ZE(9,SIZE) BROWSE DEBUG OBJECTEXTEND PRINT(.\lst\uart.lst) TABS(2) OBJECT(.\hex\uart.obj)
+
+line level    source
+
+   1          #ifndef _UART_C_
+   2          #define _UART_C_
+   3          #include "ca51f_config.h"
+   4          #if (IC_TYPE == IC_TYPE_CA51F2X)
+              #include "../../includes/ca51f2sfr.h"
+              #include "../../includes/ca51f2xsfr.h"
+              #include "../../includes/gpiodef_f2.h"
+              #elif (IC_TYPE == IC_TYPE_CA51F3X)
+   9          #include "../../includes/ca51f3sfr.h"
+  10          #include "../../includes/ca51f3xsfr.h"
+  11          #include "../../includes/gpiodef_f3.h"
+  12          #endif
+  13          #include "../../includes/system.h"
+  14          #include "../../Library/includes/uart.h"
+  15          #include <intrins.h>
+  16          #include <string.h>
+  17          #include <stdarg.h>
+  18          #include <stdlib.h>
+  19          #include <stdio.h>
+  20          #include <absacc.h>
+  21          /*********************************************************************************************************
+             -************/
+  22          /*********************************************************************************************************
+             -************/
+  23          #ifdef UART0_EN
+  24          
+  25          
+  26          void Uart0_Initial(unsigned long int baudrate)
+  27          {
+  28   1        unsigned int value_temp;
+  29   1      
+  30   1        GPIO_Init(P31F,P31_UART0_RX_SETTING);
+  31   1        GPIO_Init(P30F,P30_UART0_TX_SETTING);
+  32   1        
+  33   1        uart0_send.head=0;
+  34   1        uart0_send.tail=0;
+  35   1        uart0_rev.head=0;
+  36   1        uart0_rev.tail=0;
+  37   1        uart0_tx_flag=0;
+  38   1        uart0_rx_finish_flag=0;
+  39   1      /*********************************************************************************************************
+             -***************/
+  40   1      //TIMER2作为UART0的波特率发生器
+  41   1        value_temp = 0x10000 - FOSC/(baudrate*32);
+  42   1        T2CON =   0x24;
+  43   1        T2CH  =   (unsigned char)(value_temp>>8);
+  44   1        T2CL  =   (unsigned char)(value_temp);
+  45   1        TH2   =   (unsigned char)(value_temp>>8);
+  46   1        TL2   =   (unsigned char)(value_temp);; 
+  47   1        TR2   =   1;
+  48   1      /*********************************************************************************************************
+             -***************/  
+  49   1      
+  50   1      
+C51 COMPILER V9.54   UART                                                                  08/08/2019 01:39:00 PAGE 2   
+
+  51   1      /*********************************************************************************************************
+             -***************/
+  52   1      //TIMER1作为UART0的波特率发生器
+  53   1      
+  54   1      //  TMOD = (TMOD&0xCF)|0x20;
+  55   1      //  TH1 = 0xff;   //19200
+  56   1      //  TL1 = 0xff;
+  57   1      //  ET1=0;
+  58   1      //  TR1=1;    
+  59   1      //  PCON |= 0x80;   
+  60   1      /*********************************************************************************************************
+             -***************/
+  61   1      
+  62   1      
+  63   1        S0CON = 0x50;  
+  64   1        ES0 = 1;
+  65   1      }
+  66          void Uart0_PutChar(unsigned char bdat)
+  67          {
+  68   1        unsigned char free_space;
+  69   1        unsigned char tail_tmp;
+  70   1        while(1)
+  71   1        {       
+  72   2          tail_tmp = uart0_send.tail; 
+  73   2          if(uart0_send.head < tail_tmp)
+  74   2          {
+  75   3            free_space = tail_tmp - uart0_send.head;
+  76   3          }
+  77   2          else
+  78   2          {
+  79   3            free_space = UART0_TX_BUF_SIZE + tail_tmp - uart0_send.head;
+  80   3          }   
+  81   2          if(free_space > 1)
+  82   2          {
+  83   3            ES0 = 0; 
+  84   3            uart0_send.head++;
+  85   3            uart0_send.head %= UART0_TX_BUF_SIZE;
+  86   3            uart0_tx_buf[uart0_send.head] = bdat;     
+  87   3            if(!uart0_tx_flag)
+  88   3            {
+  89   4              ES0 = 1;        
+  90   4              uart0_send.tail++;
+  91   4              uart0_send.tail %= UART0_TX_BUF_SIZE;   
+  92   4              S0BUF=uart0_tx_buf[uart0_send.tail];        
+  93   4              uart0_tx_flag = 1;    
+  94   4            }
+  95   3            else
+  96   3            {
+  97   4              ES0 = 1;  
+  98   4            }     
+  99   3            break;
+ 100   3          }
+ 101   2        }
+ 102   1      }
+ 103          void UART0_ISR (void) interrupt 4
+ 104          { 
+ 105   1        if(RI0)
+ 106   1        {
+ 107   2          RI0 = 0;
+ 108   2      
+ 109   2          uart0_rev.head %= UART0_RX_BUF_SIZE;
+ 110   2          uart0_rx_buf[uart0_rev.head]=S0BUF;
+C51 COMPILER V9.54   UART                                                                  08/08/2019 01:39:00 PAGE 3   
+
+ 111   2          if((uart0_rx_buf[uart0_rev.head-1] == 0x0d) && (uart0_rx_buf[uart0_rev.head] == 0x0a))
+ 112   2      //    if(uart0_rx_buf[uart0_rev.head] == 0x0A)
+ 113   2            uart0_rx_finish_flag = 1; 
+ 114   2          //S0BUF = uart0_rx_buf[uart0_rev.head];
+ 115   2          uart0_rev.head++;
+ 116   2        }
+ 117   1        if(TI0)
+ 118   1        { 
+ 119   2          TI0 = 0;    
+ 120   2          if(uart0_send.head!=uart0_send.tail)
+ 121   2          {
+ 122   3            uart0_send.tail++;
+ 123   3            uart0_send.tail %= UART0_TX_BUF_SIZE;
+ 124   3            S0BUF=uart0_tx_buf[uart0_send.tail];        
+ 125   3          }
+ 126   2          else
+ 127   2          {
+ 128   3            uart0_tx_flag=0;
+ 129   3          } 
+ 130   2        }
+ 131   1      }
+ 132          #endif
+ 133          #ifdef UART1_EN
+              void Uart1_Initial(unsigned long int baudrate)
+              {
+                unsigned int value_temp;
+              
+                uart1_send.head=0;
+                uart1_send.tail=0;
+                uart1_rev.head=0;
+                uart1_rev.tail=0;
+                uart1_tx_flag=0;
+              
+                value_temp = 0x400 - FOSC/(baudrate*32);
+              
+              #if (IC_TYPE == IC_TYPE_CA51F3X)
+                GPIO_Init(P12F,P12_UART1_RX_SETTING);
+                GPIO_Init(P11F,P11_UART1_TX_SETTING);
+              #elif  (IC_TYPE == IC_TYPE_CA51F2X)
+                GPIO_Init(P67F,P67_UART1_RX_SETTING);
+                GPIO_Init(P66F,P66_UART1_TX_SETTING);
+              #endif
+              
+                S1RELH = (unsigned char)(value_temp>>8);
+                S1RELL = (unsigned char)(value_temp);
+                
+                S1CON = 0xD0;
+                ES1 = 1;  
+              }
+              void Uart1_PutChar(unsigned char bdat)
+              {
+                unsigned char free_space;
+                unsigned char tail_tmp;
+                while(1)
+                {   
+                  tail_tmp = uart1_send.tail;
+                  if(uart1_send.head < tail_tmp)
+                  {
+                    free_space = tail_tmp - uart1_send.head;
+                  }
+                  else
+                  {
+C51 COMPILER V9.54   UART                                                                  08/08/2019 01:39:00 PAGE 4   
+
+                    free_space = UART1_TX_BUF_SIZE + tail_tmp - uart1_send.head;
+                  }   
+                  if(free_space > 1)
+                  {
+                    ES1 = 0; 
+                    uart1_send.head++;
+                    uart1_send.head %= UART1_TX_BUF_SIZE;
+                    uart1_tx_buf[uart1_send.head] = bdat;
+                    if(!uart1_tx_flag)
+                    {
+                      ES1 = 1;
+                      uart1_send.tail++;
+                      uart1_send.tail %= UART1_TX_BUF_SIZE;   
+                      S1BUF = uart1_tx_buf[uart1_send.tail];        
+                      uart1_tx_flag = 1;    
+                    }
+                    else
+                    {
+                      ES1 = 1;  
+                    }     
+                    break;
+                  }
+                }
+              }
+              void UART1_ISR (void) interrupt 6 
+              {
+                if(S1CON & BIT0)
+                {
+                  S1CON = (S1CON&~(BIT0|BIT1))|BIT0;       
+                  uart1_rev.head++;
+                    uart1_rev.head %= UART1_RX_BUF_SIZE;
+                  uart1_rx_buf[uart1_rev.head]=S1BUF;
+                }
+                if(S1CON & BIT1)
+                {
+                  S1CON = (S1CON&~(BIT0|BIT1))|BIT1;  
+                  if(uart1_send.head!=uart1_send.tail)
+                  {
+                    uart1_send.tail++;
+                    uart1_send.tail %= UART1_TX_BUF_SIZE;
+                    S1BUF=uart1_tx_buf[uart1_send.tail];        
+                  }
+                  else
+                  {
+                    uart1_tx_flag=0;
+                  }   
+                }
+              }
+              #endif
+ 222          
+ 223          #ifdef UART2_EN
+              void Uart2_Initial(unsigned long int baudrate)
+              {
+                unsigned int value_temp;
+              
+                uart2_send.head=0;
+                uart2_send.tail=0;
+                uart2_rev.head=0;
+                uart2_rev.tail=0;
+                uart2_tx_flag=0;
+              
+                GPIO_Init(P60F,P60_UART2_RX_SETTING);
+C51 COMPILER V9.54   UART                                                                  08/08/2019 01:39:00 PAGE 5   
+
+                GPIO_Init(P61F,P61_UART2_TX_SETTING);
+              
+                value_temp = 0x400 - FOSC/(baudrate*32);
+                S2RELH = (unsigned char)(value_temp>>8);
+                S2RELL = (unsigned char)(value_temp);
+                
+                S2CON = 0xD0;
+                INT3EN =  1;  
+              }
+              void Uart2_PutChar(unsigned char bdat)
+              {
+                unsigned char free_space;
+                unsigned char tail_tmp;
+                while(1)
+                {   
+                  tail_tmp = uart2_send.tail;
+                  if(uart2_send.head < tail_tmp)
+                  {
+                    free_space = tail_tmp - uart2_send.head;
+                  }
+                  else
+                  {
+                    free_space = UART2_TX_BUF_SIZE + tail_tmp - uart2_send.head;
+                  }   
+                  if(free_space > 1)
+                  {
+                    INT3EN = 0; 
+                    uart2_send.head++;
+                    uart2_send.head %= UART2_TX_BUF_SIZE;
+                    uart2_tx_buf[uart2_send.head] = bdat;     
+                    if(!uart2_tx_flag)
+                    {
+                      INT3EN = 1;
+                      uart2_send.tail++;
+                      uart2_send.tail %= UART2_TX_BUF_SIZE;     
+                      S2BUF = uart2_tx_buf[uart2_send.tail];        
+                      uart2_tx_flag = 1;    
+                    }
+                    else
+                    {
+                      INT3EN = 1; 
+                    }     
+                    break;
+                  }
+                }
+              }
+              void UART2_ISR (void) interrupt 8 
+              {
+                if(S2CON & BIT0)
+                {
+                  S2CON = (S2CON&~(BIT0|BIT1))|BIT0;       
+                  uart2_rev.head++;
+                  uart2_rev.head %= UART2_RX_BUF_SIZE;
+                  uart2_rx_buf[uart2_rev.head]=S2BUF;
+                }
+                if(S2CON & BIT1)
+                {
+                  S2CON = (S2CON&~(BIT0|BIT1))|BIT1;  
+                  if(uart2_send.head!=uart2_send.tail)
+                  {
+                    uart2_send.tail++;
+                    uart2_send.tail %= UART2_TX_BUF_SIZE;
+C51 COMPILER V9.54   UART                                                                  08/08/2019 01:39:00 PAGE 6   
+
+                    S2BUF=uart2_tx_buf[uart2_send.tail];        
+                  }
+                  else
+                  {
+                    uart2_tx_flag=0;
+                  }   
+                }
+              }
+              #endif
+ 306          #ifdef PRINT_EN
+                #ifdef UART0_PRINT
+                  #define Uart_PutChar  Uart0_PutChar
+                #elif defined  UART1_PRINT
+                  #define Uart_PutChar  Uart1_PutChar
+                #elif defined  UART2_PRINT
+                  #define Uart_PutChar  Uart2_PutChar
+                #endif
+                
+              void UartPutStr(char *str)
+              {
+                while(*str)
+                { 
+                  Uart_PutChar(*str++);
+                }
+              }
+              void uart_printf(char *fmt,...) 
+              {
+                  va_list ap;
+                  char xdata string[256];
+                  va_start(ap,fmt);
+                  vsprintf(string,fmt,ap);
+                  UartPutStr(string);
+                  va_end(ap);
+              }
+              #endif
+ 332          /*********************************************************************************************************
+             -************/
+ 333          #endif
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    300    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     24    ----
+   PDATA SIZE       =    100       4
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      2    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

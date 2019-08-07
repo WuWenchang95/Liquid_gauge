@@ -535,62 +535,27 @@ void KeyProcess(void)
 #ifdef PRINT_EN		
 			uart_printf("KEY_DOWN short press! \r\n");
 #endif
-			if(FlowSt.dRationValue < (MIN_RATION_VALUE+1))
-			{
-				FlowSt.dRationValue = MAX_RATION_VALUE;
-			}
-			else
-			{
-				FlowSt.dRationValue = FlowSt.dRationValue-1;
-			}
-
+		//	ResetKey(KEY_DOWN);
+			FlowSt.dRationValue--;
 			if(FlowSt.dRationValue < MIN_RATION_VALUE)
-			{
-				FlowSt.dRationValue = MAX_RATION_VALUE;
-				
-			}
-			else if(FlowSt.dRationValue > MAX_RATION_VALUE)
 			{
 				FlowSt.dRationValue = MAX_RATION_VALUE;
 			}	
 		}
 		else if(CheckKey(KEY_DOWN) == TWICE_PRESS)
 		{
-			if(FlowSt.dRationValue < (MIN_RATION_VALUE+2))
-			{
-				FlowSt.dRationValue = MAX_RATION_VALUE;
-			}
-			else
-			{
-				FlowSt.dRationValue = FlowSt.dRationValue-2;
-			}
-			
+		//	ResetKey(KEY_UP);
+			FlowSt.dRationValue = FlowSt.dRationValue-2;
 			if(FlowSt.dRationValue < MIN_RATION_VALUE)
 			{
 				FlowSt.dRationValue = MAX_RATION_VALUE;
-				
-			}
-			else if(FlowSt.dRationValue > MAX_RATION_VALUE)
-			{
-				FlowSt.dRationValue = MAX_RATION_VALUE;
-			}
+			}	
 		}
 		else if(CheckKey(KEY_DOWN) == THREE_PRESS)
 		{
-			if(FlowSt.dRationValue < (MIN_RATION_VALUE+3))
-			{
-				FlowSt.dRationValue = MAX_RATION_VALUE;
-			}
-			else
-			{
-				FlowSt.dRationValue = FlowSt.dRationValue-3;
-			}
-
+		//	ResetKey(KEY_UP);
+			FlowSt.dRationValue = FlowSt.dRationValue-3;
 			if(FlowSt.dRationValue < MIN_RATION_VALUE)
-			{
-				FlowSt.dRationValue = MAX_RATION_VALUE;
-			}
-			else if(FlowSt.dRationValue > MAX_RATION_VALUE)
 			{
 				FlowSt.dRationValue = MAX_RATION_VALUE;
 			}	
@@ -604,24 +569,12 @@ void KeyProcess(void)
 #ifdef PRINT_EN					
                 uart_printf("KEY_UP Long press! \r\n");
 #endif
-				if(FlowSt.dRationValue < (MIN_RATION_VALUE+1))
-				{
-					FlowSt.dRationValue = MAX_RATION_VALUE;
-				}
-				else
-				{
-					FlowSt.dRationValue = FlowSt.dRationValue-1;
-				}
-
-				if(FlowSt.dRationValue < MIN_RATION_VALUE)
-				{
-					FlowSt.dRationValue = MAX_RATION_VALUE;
-					
-				}
-				else if(FlowSt.dRationValue > MAX_RATION_VALUE)
-				{
-					FlowSt.dRationValue = MAX_RATION_VALUE;
-				} 
+        //      ResetKey(KEY_UP);
+                FlowSt.dRationValue--; 
+                if(FlowSt.dRationValue > MAX_RATION_VALUE)
+                {
+                    FlowSt.dRationValue = MIN_RATION_VALUE;
+                }   
 
 			}
 		

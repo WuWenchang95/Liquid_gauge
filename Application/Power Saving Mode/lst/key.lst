@@ -1,0 +1,496 @@
+C51 COMPILER V9.54   KEY                                                                   08/08/2019 01:38:59 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE KEY
+OBJECT MODULE PLACED IN .\hex\key.obj
+COMPILER INVOKED BY: D:\OfficeSoftware\KEIL_C51\C51\BIN\C51.EXE key.c COMPACT ROM(COMPACT) OPTIMIZE(9,SIZE) BROWSE DEBUG
+                    - OBJECTEXTEND PRINT(.\lst\key.lst) TABS(2) OBJECT(.\hex\key.obj)
+
+line level    source
+
+   1          #ifndef _KEY_C_
+   2          #define _KEY_C_
+   3          
+   4          #include "ca51f_config.h"
+   5          #if (IC_TYPE == IC_TYPE_CA51F2X)
+              #include "../../includes/ca51f2sfr.h"
+              #include "../../includes/ca51f2xsfr.h"
+              #include "../../includes/gpiodef_f2.h"
+              #elif (IC_TYPE == IC_TYPE_CA51F3X)
+  10          #include "../../includes/ca51f3sfr.h"
+  11          #include "../../includes/ca51f3xsfr.h"
+  12          #include "../../includes/gpiodef_f3.h"
+  13          #endif
+  14          #include "../../includes/system.h"
+  15          #include "../../Library/includes/uart.h"
+  16          
+  17          #include "main.h"
+  18          #include <intrins.h>
+  19          #include "key.h"
+  20          #include "buzzer.h"
+  21          
+  22          //key_msg xdata  key_dev[KEY_SUM];
+  23          
+  24          stkey_msg data  tkey_dev;
+  25          
+  26          /**************************************************************
+  27          **º¯ÊýÃû³Æ£ºKeyInit
+  28          **º¯ÊýÃèÊö£º°´¼ü³õÊ¼»¯  
+  29          **Èë¿Ú²ÎÊý£ºÎÞ
+  30          **³ö¿Ú²ÎÊý£ºÎÞ
+  31          ***************************************************************/
+  32          void KeyInit(void (*KeyProc)(void))
+  33          {
+  34   1        GPIO_Init(P21F,INPUT | PD_EN);
+  35   1        GPIO_Init(P10F,INPUT | PD_EN);
+  36   1        GPIO_Init(P11F,INPUT | PD_EN);
+  37   1        GPIO_Init(P12F,INPUT | PD_EN);
+  38   1        GPIO_Init(P13F,INPUT | PD_EN);
+  39   1        GPIO_Init(P14F,INPUT | PD_EN);
+  40   1        GPIO_Init(P15F,INPUT | PD_EN);
+  41   1        GPIO_Init(P16F,INPUT | PD_EN);
+  42   1        GPIO_Init(P17F,INPUT | PD_EN);
+  43   1        GPIO_Init(P37F,INPUT | PD_EN);
+  44   1      
+  45   1        
+  46   1        tkey_dev.KeyPro = KeyProc;
+  47   1        tkey_dev.oldkeyValue = KEY_NONO;
+  48   1      }
+  49          
+  50          /**************************************************************
+  51          **º¯ÊýÃû³Æ£ºReadKeyPin
+  52          **º¯ÊýÃèÊö£º¶ÁÈ¡°´¼üIO,¸³Öµµ½±äÁ¿ÖÐ  
+  53          **Èë¿Ú²ÎÊý£ºÎÞ
+  54          **³ö¿Ú²ÎÊý£ºÎÞ
+C51 COMPILER V9.54   KEY                                                                   08/08/2019 01:38:59 PAGE 2   
+
+  55          ***************************************************************/
+  56          uint16_t ReadKeyPin(void) //°´¼ü¶ÔÓ¦IO¿Ú¼ì²â
+  57          {
+  58   1        uint16_t tmp = 0; //¶ÔÓ¦Î»ÓÐ°´ÏÂÊ±1    °´ÏÂ¸ßµçÆ½
+  59   1        
+  60   1        if(KEY1)  
+  61   1          tmp |= (1<<0);
+  62   1        if(KEY2) 
+  63   1          tmp |= (1<<1);
+  64   1        if(KEY3) 
+  65   1          tmp |= (1<<2);
+  66   1        if(KEY4)  
+  67   1          tmp |= (1<<3);
+  68   1        if(KEY5) 
+  69   1          tmp |= (1<<4);
+  70   1        if(KEY6) 
+  71   1          tmp |= (1<<5);
+  72   1        if(KEY7) 
+  73   1          tmp |= (1<<6);
+  74   1        if(KEY8)  
+  75   1          tmp |= (1<<7);
+  76   1        if(KEYUP) 
+  77   1          tmp |= (1<<8);
+  78   1        if(KEYDOWN) 
+  79   1          tmp |= (1<<9);
+  80   1      
+  81   1        return tmp;
+  82   1      }
+  83          
+  84          /**************************************************************
+  85          **º¯ÊýÃû³Æ£ºCheckKeyPressNum
+  86          **º¯ÊýÃèÊö£º¼ì²âµ±Ç°°´ÏÂµÄ°´¼üÊýÁ¿
+  87          **Èë¿Ú²ÎÊý£ºÎÞ
+  88          **³ö¿Ú²ÎÊý£ºÎÞ
+  89          ***************************************************************/
+  90          uint8_t CheckKeyPressNum(uint16_t KeyValue)
+  91          {
+  92   1        uint8_t i; 
+  93   1        uint8_t sum = 0;
+  94   1        
+  95   1        for(i = 0; i < KEY_SUM; i++)
+  96   1        {
+  97   2          if(KeyValue & (1 << i))
+  98   2          {
+  99   3            sum++;
+ 100   3          }
+ 101   2        }
+ 102   1      
+ 103   1        return sum;
+ 104   1      }
+ 105          
+ 106          /**************************************************************
+ 107          **º¯ÊýÃû³Æ£ºCheckKeyValue
+ 108          **º¯ÊýÃèÊö£º¼ì²âµ±Ç°°´ÏÂµÄ°´¼üÖµ
+ 109          **Èë¿Ú²ÎÊý£ºÎÞ
+ 110          **³ö¿Ú²ÎÊý£ºÎÞ
+ 111          ***************************************************************/
+ 112          KeyCode CheckKeyValue(uint16_t KeyValue)
+ 113          
+ 114          {
+ 115   1        KeyCode i; 
+ 116   1        uint8_t keyV = 0;
+C51 COMPILER V9.54   KEY                                                                   08/08/2019 01:38:59 PAGE 3   
+
+ 117   1        
+ 118   1        for(i = KEY_1; i < KEY_SUM; i++)
+ 119   1        {
+ 120   2          if(KeyValue & (1 << i))
+ 121   2          {
+ 122   3            keyV = i; 
+ 123   3            break;
+ 124   3          }
+ 125   2        }
+ 126   1      
+ 127   1        return keyV;
+ 128   1      }
+ 129          
+ 130          
+ 131          void KeyScan(void)
+ 132          {
+ 133   1        uint16_t key_data;
+ 134   1        
+ 135   1        key_data = ReadKeyPin();
+ 136   1      
+ 137   1        tkey_dev.cur = key_data;
+ 138   1      
+ 139   1        if(tkey_dev.old != tkey_dev.cur)
+ 140   1        {
+ 141   2          tkey_dev.old = tkey_dev.cur;
+ 142   2      #ifdef PRINT_EN     
+                  uart_printf("key c ");
+              #endif
+ 145   2          //tkey_dev.count = 0;
+ 146   2          
+ 147   2          if(CheckKeyPressNum(tkey_dev.cur) == 1)
+ 148   2          {
+ 149   3      #ifdef PRINT_EN 
+                    uart_printf("key_data  %x ",tkey_dev.cur);
+              #endif
+ 152   3            tkey_dev.key_on = 1;
+ 153   3            
+ 154   3            
+ 155   3          }
+ 156   2      #if 0   
+                  else if(CheckKeyPressNum(tkey_dev.cur) == 0)
+                  {
+                    tkey_dev.key_on = 0;
+                    uart_printf("a");
+                  }
+              #endif    
+ 163   2          else
+ 164   2          {
+ 165   3            tkey_dev.key_on = 0;
+ 166   3      #ifdef PRINT_EN       
+                    uart_printf("e");
+              #endif
+ 169   3          }
+ 170   2        }
+ 171   1        
+ 172   1        if(tkey_dev.key_on) //µ¥´ÎºÍ³¤°´¶¼¿ÉÅÐ¶Ï
+ 173   1        {
+ 174   2          tkey_dev.curkeyValue = CheckKeyValue(tkey_dev.cur);
+ 175   2          tkey_dev.down_time = 0;
+ 176   2          if(tkey_dev.count < 3000)
+ 177   2            tkey_dev.count++;
+ 178   2          
+C51 COMPILER V9.54   KEY                                                                   08/08/2019 01:38:59 PAGE 4   
+
+ 179   2        }
+ 180   1      
+ 181   1        if(tkey_dev.count == 300)
+ 182   1        { 
+ 183   2          tkey_dev.keyValue = tkey_dev.curkeyValue;
+ 184   2          tkey_dev.key_sta = LONG_PRESS;      //
+ 185   2          tkey_dev.press_cnt = 0;
+ 186   2          tkey_dev.oldkeyValue = KEY_NONO;
+ 187   2              
+ 188   2          tkey_dev.longpressfg = 1;
+ 189   2              tkey_dev.isRead = 1; 
+ 190   2              SetBuzzer(RING_ONCE);
+ 191   2        }
+ 192   1      
+ 193   1        if(!tkey_dev.key_on && tkey_dev.count > 0)
+ 194   1        {
+ 195   2          if(!tkey_dev.longpressfg)
+ 196   2          {
+ 197   3      #if 0   
+                    if(tkey_dev.count >= 300)
+                    {
+                    
+                      tkey_dev.keyValue = tkey_dev.curkeyValue;
+                      tkey_dev.key_sta = LONG_PRESS;      //
+                      tkey_dev.press_cnt = 0;
+                      tkey_dev.oldkeyValue = KEY_NONO;
+                      tkey_dev.isRead = 1; 
+              #ifdef PRINT_EN     
+                      uart_printf("b");
+              #endif
+                    }
+                    else 
+              #endif
+ 212   3            if(tkey_dev.count >= 1)     //50ms
+ 213   3            {
+ 214   4              if(tkey_dev.oldkeyValue != tkey_dev.curkeyValue)
+ 215   4              {
+ 216   5                
+ 217   5                tkey_dev.press_cnt = 1;
+ 218   5      #ifdef PRINT_EN
+                        uart_printf("c");
+              #endif
+ 221   5              }
+ 222   4              else
+ 223   4              {
+ 224   5                tkey_dev.press_cnt++;
+ 225   5              }
+ 226   4              
+ 227   4              tkey_dev.oldkeyValue = tkey_dev.curkeyValue;
+ 228   4              
+ 229   4              
+ 230   4              tkey_dev.down_time = 50;
+ 231   4       #ifdef PRINT_EN  
+                      uart_printf("d");
+              #endif
+ 234   4              SetBuzzer(RING_ONCE);
+ 235   4            }
+ 236   3          
+ 237   3          }
+ 238   2          else
+ 239   2          {
+ 240   3            tkey_dev.longpressfg = 0;
+C51 COMPILER V9.54   KEY                                                                   08/08/2019 01:38:59 PAGE 5   
+
+ 241   3          }
+ 242   2          tkey_dev.count = 0;     
+ 243   2          
+ 244   2        }
+ 245   1      }
+ 246          
+ 247          
+ 248          void KeyloosenScan(void)
+ 249          {
+ 250   1        if(tkey_dev.down_time > 0)
+ 251   1        {
+ 252   2          tkey_dev.down_time--;
+ 253   2          if(tkey_dev.down_time == 0)
+ 254   2          {
+ 255   3            if(tkey_dev.press_cnt == 1)
+ 256   3            {
+ 257   4              tkey_dev.key_sta = SHORT_PRESS; 
+ 258   4            }
+ 259   3            else if(tkey_dev.press_cnt == 2)
+ 260   3            {
+ 261   4              tkey_dev.key_sta = TWICE_PRESS; 
+ 262   4            }
+ 263   3            else if(tkey_dev.press_cnt == 3)
+ 264   3            {
+ 265   4              tkey_dev.key_sta = THREE_PRESS; 
+ 266   4            }     
+ 267   3            else
+ 268   3            {
+ 269   4              tkey_dev.key_sta = NO_PRESS;  
+ 270   4            }
+ 271   3            tkey_dev.press_cnt = 0;
+ 272   3            
+ 273   3            tkey_dev.keyValue = tkey_dev.oldkeyValue;
+ 274   3            tkey_dev.oldkeyValue = KEY_NONO;
+ 275   3            
+ 276   3            tkey_dev.isRead = 1; 
+ 277   3      #ifdef PRINT_EN       
+                    uart_printf("key %d,  %c   \r\n",tkey_dev.keyValue,tkey_dev.key_sta);
+              #endif
+ 280   3          }
+ 281   2        }
+ 282   1      }
+ 283          
+ 284          uint8_t IsLongPress(KeyCode key_num)
+ 285          {
+ 286   1        if(tkey_dev.key_on)
+ 287   1        {
+ 288   2          if(tkey_dev.curkeyValue == key_num)
+ 289   2          if(tkey_dev.key_sta == LONG_PRESS)  
+ 290   2            return tkey_dev.longpressfg;
+ 291   2        }
+ 292   1      
+ 293   1        return 0;
+ 294   1        
+ 295   1      }
+ 296          
+ 297          KeySta CheckKey(KeyCode key_num)
+ 298          {
+ 299   1        KeySta temp = NO_PRESS;
+ 300   1        
+ 301   1        if(tkey_dev.isRead)
+ 302   1        {
+C51 COMPILER V9.54   KEY                                                                   08/08/2019 01:38:59 PAGE 6   
+
+ 303   2          if(tkey_dev.keyValue == key_num)
+ 304   2            temp = tkey_dev.key_sta;
+ 305   2        }
+ 306   1        return temp;
+ 307   1      }
+ 308          
+ 309          
+ 310          
+ 311          
+ 312          
+ 313          void AllKeyScan(void)
+ 314          {
+ 315   1        static uint8_t ttemp;
+ 316   1      
+ 317   1        if(ttemp != (uint8_t)(Time_ms))
+ 318   1        {
+ 319   2          ttemp = (uint8_t)(Time_ms);
+ 320   2          KeyScan();
+ 321   2          KeyloosenScan();
+ 322   2          tkey_dev.KeyPro();
+ 323   2          tkey_dev.isRead = 0;    
+ 324   2        }
+ 325   1        
+ 326   1      }
+ 327          
+ 328          
+ 329          #if 0
+              
+              void KeyScan(key_msg *key,char key_mun,char key_data) //°´¼ü´¦Àí
+              {
+                uint16_t temp;
+              //  CHAR_BIT temp = KEY_DATA; 
+                temp = 1 << key_mun;
+              
+                key->cur = (key_data & temp) ? 1:0 ; //¶ÁÈ¡µ±Ç°°´¼üµÄ×´Ì¬
+              
+                if(key->cur != key->old) //°´¼ü°´ÏÂ»òÕßËÉ¿ª¼ì²â£¬°´ÏÂÊ±£¬×´Ì¬Ò»Ö±Îª1£¬ËÉ¿ªÊ±Îª0
+                {
+                  
+                  key->old = key->cur;//°Ñµ±Ç°×´Ì¬¸ø¾ÉµÄ×´Ì¬£¬ÒÔÃâÖØ¸´ÔËÐÐ¸ÃÅÐ¶Ï
+                  if(key->cur == 0)
+                    key->key_on = 1;
+                  else
+                    key->key_on = 0; 
+                }
+              
+                if(key->key_on) //µ¥´ÎºÍ³¤°´¶¼¿ÉÅÐ¶Ï
+                {
+                  key->down_time = 0;
+                  key->count++;
+                }
+              
+              
+                if(!key->key_on && key->count > 0) //°´¼üËÉ¿ªÊ±ºò½øÐÐ¼ì²â£¬Èç¹ûÒ»Ö±°´×ÅÖ´ÐÐ³¤°´£¬ÕâÀïÒ²¿ÉÒÔÐ´1£¬¿ÉÓÃÓÚÏû¶
+             -¶
+                {
+                  if(key->count >= 300)
+                  {
+              //      key->flag = 1;      //
+                    key->key_sta = LONG_PRESS;      //
+                  }
+                  else if(key->count >= 2)      //50ms
+C51 COMPILER V9.54   KEY                                                                   08/08/2019 01:38:59 PAGE 7   
+
+                  {
+                    //key->flag = 1;      //
+                    key->press_cnt++;
+                    key->down_time = 5;
+                    //key->key_sta = SHORT_PRESS;     //¶Ì°´
+                  }
+              
+                  key->count = 0; 
+                  //·äÃùÆ÷ÏìÒ»ÏÂ
+                }
+              }
+              
+              /*
+                °´¼üËÉÊÖÖ®ºóµÄ¼ÆÊ±
+              */
+              void KeyloosenScan(key_msg *key)
+              {
+                if(key->down_time > 0)
+                {
+                  key->down_time--;
+                  if(key->down_time == 0)
+                  {
+                    if(key->press_cnt == 1)
+                    {
+                      key->key_sta = SHORT_PRESS; 
+                    }
+                    else if(key->press_cnt == 2)
+                    {
+                      key->key_sta = TWICE_PRESS; 
+                    }
+                    key->press_cnt = 0;
+              //      key->flag = 1;
+                  }
+                }
+              }
+              /*
+                °´¼üÊÇ·ñ°´ÏÂ
+              */
+              uint8_t IsKeyPress(KeyCode key_num)
+              {
+                if(key_dev[key_num].key_on)
+                {
+                  return 1;
+                }
+                else
+                {
+                  return 0;
+                }
+              }
+              
+              KeySta CheckKey(KeyCode key_num)
+              {
+                KeySta temp;
+                
+                temp =  key_dev[key_num].key_sta;
+                //key_dev[key_num].key_sta =  NO_PRESS;
+                //key_dev[key_num].flag = 0;
+                
+                return temp;
+              }
+              
+              void ResetKey(KeyCode key_num)
+C51 COMPILER V9.54   KEY                                                                   08/08/2019 01:38:59 PAGE 8   
+
+              {
+                key_dev[key_num].key_sta =  NO_PRESS;
+              //  key_dev[key_num].flag = 0;
+                key_dev[key_num].count = 0; 
+                key_dev[key_num].press_cnt = 0;
+                key_dev[key_num].down_time = 0;
+              }
+              
+              void AllKeyScan(void)
+              {
+                uint8_t key_data;
+                uint8_t i;
+                static uint8_t ttemp;
+              
+                if(ttemp != (uint8_t)(Time_10ms))
+                {
+                  ttemp = (uint8_t)(Time_10ms);
+                  
+                  key_data = ReadKeyPin();
+                    
+                  for(i = 0;i < KEY_SUM; i++)
+                  {
+                    KeyScan(&key_dev[i],i,key_data);
+                    KeyloosenScan(&key_dev[i]);
+                  }
+              
+                }
+              
+              } 
+              #endif
+ 456          
+ 457          #endif
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    504    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =      1    ----
+   DATA SIZE        =     18    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

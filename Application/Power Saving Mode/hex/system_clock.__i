@@ -1,0 +1,1 @@
+"..\..\Library\Sources\system_clock.c" COMPACT ROM(COMPACT) OPTIMIZE (9,SIZE) BROWSE DEBUG OBJECTEXTEND PRINT(.\lst\system_clock.lst) TABS (2) OBJECT(.\hex\system_clock.obj)
